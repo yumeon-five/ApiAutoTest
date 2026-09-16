@@ -1,23 +1,24 @@
-# ------------------------------------------------------------
-# 文件作用：CSV 数据读取工具。
-# 核心操作：read_csv 使用 pandas 按列名读取 CSV（GBK 编码），返回该列数据列表，异常记录日志。
-# ------------------------------------------------------------
-import pandas as pd
+
+import csv
+import os.path
+
 from common.recordlog import logs
-import traceback
+from conf.setting import DIR_PATH
 
 
-def read_csv(file_name, col_name):
+def read_csv(file_name):
     """
-    :param file_name: csv目录
-    :param col_name: 取值的列名
-    usecols：需要读取的列，可以是列的位置编号，也可以是列的名称
-    error_bad_lines = False  当某行数据有问题时，不报错，直接跳过，处理脏数据时使用
+    :param file_name: csv文件名
     :return:
     """
     try:
-        df = pd.read_csv(filepath, encoding="GBK")
-        data = df[col_name].tolist()
-        return data
-    except Exception:
-        logs.error(str(traceback.format_exc()))
+        with open(os.path.join(DIR_PATH,'data',file_name),'r',encoding='utf-8') as f:
+            csv_reader = csv.reader(f)
+            for value in csv_reader:
+                print(value)
+            return csv_reader
+
+    except Exception as e:
+        logs.error(e)
+if __name__ == '__main__':
+    read_csv('login_data.csv')

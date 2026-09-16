@@ -1,0 +1,38 @@
+<environment>
+    <parameter>
+        <key>Browser</key>
+        <value>Microsoft Edge</value>
+    </parameter>
+    <parameter>
+        <key>system</key>
+        <value>Window10</value>
+    </parameter>
+    <parameter>
+        <key>python version</key>
+        <value>3.13.5</value>
+    </parameter>
+    <parameter>
+        <key>allure version</key>
+        <value>allure-2.35.1</value>
+    </parameter>
+    <parameter>
+        <key>BaseUrl</key>
+        <value>https://127.0.0.1:8787</value>
+    </parameter>
+    <parameter>
+        <key>environment</key>
+        <value>生产环境</value>
+    </parameter>
+    <parameter>
+        <key>Project</key>
+        <value>Ware-Test项目接口自动化测试</value>
+    </parameter>
+    <parameter>
+        <key>email</key>
+        <value>3528699771@qq.com</value>
+    </parameter>
+    <parameter>
+        <key>author</key>
+        <value>Test Engineer007</value>
+    </parameter>
+</environment>

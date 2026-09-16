@@ -1,0 +1,22 @@
+- baseInfo:
+   api_name: 用户登录
+   url: /dar/user/login
+   method: post
+   header:
+     Content-Type: application/x-www-form-urlencoded;charset=UTF-8
+  cookies:
+     session: hjsksksjj17272
+  testCase:
+    - case_name: 用户名和密码参数都正确
+      data:
+        user_name: test01
+        passwd: admin123
+      validation:
+       - contains: {'msg':'登录成功'}
+       - eq: {'msg':'登录失败'}
+      extract:
+#       token: '"token":"(.*?)"'
+        token: $.token
+
+
+

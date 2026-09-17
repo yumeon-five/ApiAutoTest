@@ -9,6 +9,7 @@ from base.apiutil import BaseRequest
 class TestLogin:
 
     @allure.story('用户名和密码正常校验')
-    @pytest.mark.parametrize('params',get_testcase_yaml('./testcase/login/login.yaml'))
-    def test_case01(self, params):
-        BaseRequest().specification_yaml(params)
+    @pytest.mark.parametrize('base_info,testcase',get_testcase_yaml('./testcase/login/login.yaml'))
+    def test_case01(self, base_info, testcase):
+        allure.dynamic.title(testcase['case_name'])
+        BaseRequest().specification_yaml(base_info, testcase)

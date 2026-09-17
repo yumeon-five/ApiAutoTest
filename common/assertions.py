@@ -71,6 +71,7 @@ class Assertions:
                 logs.info(f'相等断言失败:接口的实际结果为:{response}，不等于预期结果:{str(value)}')
         else:
             raise TypeError('相等断言失败--类型错误,预期结果和接口的实际响应结果必须为字典类型！')
+        return flag
 
     def not_equal_assert(self,expected_results,actual_results):
         """

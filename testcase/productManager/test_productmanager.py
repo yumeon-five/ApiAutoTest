@@ -9,11 +9,13 @@ from base.apiutil import BaseRequest
 class TestProductManager(object):
 
     @allure.story('获取商品列表接口')
-    @pytest.mark.parametrize('params',get_testcase_yaml('./testcase/productManager/getProductList.yaml'))
-    def test_get_productlist(self, params):
-        BaseRequest().specification_yaml(params)
+    @pytest.mark.parametrize('base_info,testcase',get_testcase_yaml('./testcase/productManager/getProductList.yaml'))
+    def test_get_productlist(self, base_info, testcase):
+        allure.dynamic.title(testcase['case_name'])
+        BaseRequest().specification_yaml(base_info, testcase)
 
     @allure.story('获取商品详情')
-    @pytest.mark.parametrize('params',get_testcase_yaml('./testcase/productManager/productdetail.yaml'))
-    def test_get_productdetail(self, params):
-        BaseRequest().specification_yaml(params)
+    @pytest.mark.parametrize('base_info,testcase',get_testcase_yaml('./testcase/productManager/productdetail.yaml'))
+    def test_get_productdetail(self, base_info, testcase):
+        allure.dynamic.title(testcase['case_name'])
+        BaseRequest().specification_yaml(base_info, testcase)

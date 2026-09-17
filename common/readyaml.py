@@ -12,10 +12,19 @@ def get_testcase_yaml(file):
     :param file:yaml文件的路径
     :return:
     """
+    testcase_list = []
     try:
         with open(file,'r',encoding='UTF-8') as f:
             yaml_data = yaml.safe_load(f)
-            return yaml_data
+            if len(yaml_data) <=1:
+                new_yaml_data = yaml_data[0]
+                base_info = new_yaml_data.get('baseInfo')
+                for ts in new_yaml_data.get('testCase'):
+                    params = [base_info,ts]
+                    testcase_list.append(params)
+                return testcase_list
+            else:
+                return yaml_data
     except Exception as e:
         print(e)
 

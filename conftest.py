@@ -1,9 +1,11 @@
 import pytest
 import time
+import requests
 from common.recordlog import logs
 from common.readyaml import ReadYamlData
 from common.feishu import send_fs_msg
-
+from common.operJenkins import OperJenkins
+from conf.operationConfig import OperationConfig
 
 read=ReadYamlData()
 
@@ -21,6 +23,31 @@ def pytest_sessionstart(session):
 def clear_extract_data():
     """前置操作：清除extract.yaml文件中的数据"""
     read.clear_yaml_data()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def login_first(clear_extract_data):
+    """
+    业务线前置：会话开始先登录一次，把 token 写入 extract.yaml。
+
+    用户管理、商品管理等模块的用例里写了 ${get_extract_data(token)} 做接口关联，
+    而 clear_extract_data 每次会话都会清空 extract.yaml，因此必须先登录拿 token；
+    否则 get_extract_data('token') 会抛 KeyError: 'token'。
+    显式依赖 clear_extract_data，保证「先清空、再登录」的顺序。
+    """
+    host = OperationConfig().get_envi('host')
+    try:
+        res = requests.post(f'{host}/dar/user/login',
+                            data={'user_name': 'test01', 'passwd': 'admin123'},
+                            timeout=10)
+        token = res.json().get('token')
+        if token:
+            read.write_yaml_data({'token': token})
+            logs.info(f'前置登录成功，token 已写入 extract.yaml：{token}')
+        else:
+            logs.error(f'前置登录未获取到 token，响应内容：{res.text}')
+    except Exception as e:
+        logs.error(f'前置登录异常：{e}')
 
 
 @pytest.fixture(scope='session',autouse=True)
@@ -57,8 +84,15 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     print(f'测试用例跳过数:{skipped}')
     duration = time.time() - _SESSION_START_TIME
     print(f'测试用例执行时常:{duration:.2f}s')
-
-    content=  f"""
+    # Jenkins / 飞书属于外部通知服务，失败时不应影响 pytest 收尾
+    try:
+        oper = OperJenkins()
+        report = oper.report_success_or_fail()
+    except Exception as e:
+        logs.warning(f'获取 Jenkins 测试报告失败，跳过通知：{e}')
+        report = '获取失败'
+        return
+    content = f"""
     自动化测试结果，通知如下，请着重关注测试失败的接口，具体执行结果如下：
     测试用例总数：{case_total}
     测试通过数：{passed}
@@ -66,8 +100,11 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     错误数量：{error}
     跳过执行数量：{skipped}
     执行总时长：{duration}
-    点击查看测试报告：
+    点击查看测试报告：{report}
     """
-    send_fs_msg(content)
+    try:
+        send_fs_msg(content)
+    except Exception as e:
+        logs.warning(f'发送飞书通知失败：{e}')
 
 

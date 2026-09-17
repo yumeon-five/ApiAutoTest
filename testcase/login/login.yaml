@@ -13,7 +13,7 @@
         passwd: admin123
       validation:
        - contains: {'msg':'登录成功'}
-       - eq: {'msg':'登录失败'}
+       - eq: {'msg':'登录成功'}
       extract:
 #       token: '"token":"(.*?)"'
         token: $.token

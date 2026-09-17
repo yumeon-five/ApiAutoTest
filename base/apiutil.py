@@ -51,57 +51,78 @@ class BaseRequest(object):
                 # token: ${get_extract_data(product_id,1)} ---> "token": "123456"
                 str_data = str_data.replace(ref_all_params, str(extract_data))
 
-        # 还原数据
-        if data and isinstance(data, dict):
+        # 还原数据：dict / list 都要还原成原类型。
+        # 否则 validation（list）会被转成字符串，断言里遍历字符串会报
+        # 'str' object has no attribute 'items'
+        if isinstance(data, (dict, list)):
             data = json.loads(str_data)
         else:
             data = str_data
         return data
 
-    def specification_yaml(self, case_info):
+    def specification_yaml(self,base_info,test_case):
         """
         规范yaml接口测试数据的写法，后面可以在testcase直接调用方法
-        :param case_info:list类型
+        :param base_info:yaml文件baseinfo数据
+        :param test_case:yaml文件testcase数据
         :return:
         """
         cookie = None
         params_type = ['params', 'data', 'json']
         try:
             base_url = self.conf.get_envi('host')
-            url = base_url + case_info['baseInfo']['url']
+            url = base_url + base_info['url']
             allure.attach(url, f'接口地址:{url}')  # 测试报告中的测试步骤
-            api_name = case_info['baseInfo']['api_name']
+            api_name = base_info['api_name']
             allure.attach(api_name, f'接口名称:{api_name}')
-            method = case_info['baseInfo']['method']
+            method = base_info['method']
             allure.attach(method, f'请求方法:{method}')
-            header = self.replace_load(case_info['baseInfo']['header'])  # 解析请求头中的${}热加载
+            header = self.replace_load(base_info['header'])  # 解析请求头中的${}热加载
             allure.attach(str(header), f'请求头:{header}', allure.attachment_type.TEXT)
             try:
-                cookie = self.replace_load(case_info['baseInfo']['cookies'])  # 用动态解析的方法提取cookie值
+                cookie = self.replace_load(base_info['cookies'])  # 用动态解析的方法提取cookie值
                 allure.attach(cookie, f'接口返回的cookie:{cookie}', allure.attachment_type.TEXT)
             except:
                 pass
-            for tc in case_info['testCase']:
-                case_name = tc.pop('case_name')  # 提取case_name字段信息
-                allure.attach(case_name, f'测试用例名称:{case_name}')
-                validation = tc.pop('validation')
-                extract = tc.pop('extract', None)  # 没有这个参数就返回None
-                extract_list = tc.pop('extract_list', None)
-                # print(tc)    #提取其他信息仅保留了  {'data': {'user_name': 'test02', 'passwd': 'abc123'}}
-                for key, value in tc.items():
-                    if key in params_type:
-                        tc[key] = self.replace_load(value)
-                res = self.send.run_main(name=api_name, url=url, case_name=case_name, method=method, header=header,
-                                         cookies=cookie, file=None, **tc)
-                allure.attach(res.text, f'接口的响应信息:{res.text}', allure.attachment_type.TEXT)
-                res_text = res.text
-                res_json = res.json()
-                if extract is not None:
-                    self.extract_data(extract, res_text)
-                if extract_list is not None:
-                    self.extract_data_list(extract_list, res_text)
-                #处理接口断言
-                assert_res.assert_result(validation, res_json,res.status_code)
+            # 必须 pop：一是 dict 不能像函数一样调用，二是若留在 test_case 里，
+            # 下面 run_main(..., **test_case) 会重复传 case_name 导致 TypeError
+            case_name = test_case.pop('case_name')
+            allure.attach(case_name,f'测试用例名称:{case_name}',allure.attachment_type.TEXT)
+            #处理cookies
+            if base_info.get('cookies') is not None:
+                cookie=eval(self.replace_load(base_info['cookies']))
+
+            # 处理断言
+            validation=self.replace_load(test_case.get('validation'))
+            test_case['validation'] = validation
+            test_case.pop('validation')
+            #处理参数提取
+            extract=test_case.pop('extract',None)
+            extract_list=test_case.pop('extract_list',None)
+            #处理接口的请求参数
+            for key, value in test_case.items():
+                if key in params_type:
+                    test_case[key] = self.replace_load(value)
+            #处理文件上传接口
+            file,files=test_case.pop('files', None), None
+            if file is not None:
+                for fk,fv in file.items():
+                    allure.attach(json.dumps(file),'导入文件')
+                    files={fk:open(fv,mode='rb')}
+
+
+
+            res = self.send.run_main(name=api_name, url=url, case_name=case_name, method=method, header=header,
+                                     cookies=cookie, file=files, **test_case)
+            allure.attach(res.text, f'接口的响应信息:{res.text}', allure.attachment_type.TEXT)
+            res_text = res.text
+            res_json = res.json()
+            if extract is not None:
+                self.extract_data(extract, res_text)
+            if extract_list is not None:
+                self.extract_data_list(extract_list, res_text)
+            #处理接口断言
+            assert_res.assert_result(validation, res_json,res.status_code)
         except Exception as e:
             logs.error(e)
             raise e

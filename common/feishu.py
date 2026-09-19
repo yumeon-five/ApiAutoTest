@@ -43,7 +43,7 @@ def send_fs_msg(content_str, at_all=True):
 
     timestamp_and_sign = generate_sign()
     # url(飞书机器人Webhook地址)
-    url = 'https://open.feishu.cn/open-apis/bot/v2/hook/5e631fa5-4dcd-4ff6-98c5-ae7a80b4b63d'
+    url = 'https://open.feishu.cn/open-apis/bot/v2/hook/304f0cbc-3c09-4303-8350-8262f46f42b6'
     # @全员：飞书通过富文本标签实现，把标签拼在正文里即可
     text = f'<at user_id="all">所有人</at>\n{content_str}' if at_all else content_str
     headers = {'Content-Type': 'application/json;charset=utf-8'}

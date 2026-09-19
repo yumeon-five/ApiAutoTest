@@ -8,23 +8,27 @@ from conf.setting import FILE_PATH
 
 def get_testcase_yaml(file):
     """
-    获取yaml文件的数据
+    获取yaml文件的数据，统一展开成 [baseInfo, testCase] 的列表
+
     :param file:yaml文件的路径
-    :return:
+    :return: [[base_info, test_case], [base_info, test_case], ...]
+
+    修复记录：原实现只在「只有一个接口块」时才展开（len(yaml_data) <= 1），
+    一旦文件里写了两个顶层 baseInfo 块（同一个接口的不同请求头，例如带 token / 不带 token），
+    就会走 else 分支把原始结构直接返回，测试模块里 `base_info, testcase = data[0]`
+    解包出来的是字典的 key（字符串 'baseInfo' / 'testCase'），后续报错完全指不到根因。
+    现在改为按顶层块逐个展开，单块 / 多块文件的行为完全一致。
     """
     testcase_list = []
     try:
         with open(file,'r',encoding='UTF-8') as f:
             yaml_data = yaml.safe_load(f)
-            if len(yaml_data) <=1:
-                new_yaml_data = yaml_data[0]
-                base_info = new_yaml_data.get('baseInfo')
-                for ts in new_yaml_data.get('testCase'):
+            for block in yaml_data:
+                base_info = block.get('baseInfo')
+                for ts in block.get('testCase'):
                     params = [base_info,ts]
                     testcase_list.append(params)
-                return testcase_list
-            else:
-                return yaml_data
+            return testcase_list
     except Exception as e:
         print(e)
 
@@ -85,7 +89,7 @@ if __name__ == '__main__':
     from common.sendrequests import SendRequest
     res=get_testcase_yaml('../testcase/login/login.yaml')[0]
     url=res['baseInfo']['url']
-    new_url='http://127.0.0.1:8787'+url
+    new_url='http://127.0.0.1:8008'+url
     method=res['baseInfo']['method']
     data=res['testCase'][0]['data']
 

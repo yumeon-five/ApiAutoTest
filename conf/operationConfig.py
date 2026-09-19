@@ -38,6 +38,10 @@ class OperationConfig:
         """获取业务前置登录账号信息（[LOGIN] 段），供 conftest.py 的 login_first 夹具使用"""
         return self.get_section_for_data('LOGIN',option)
 
+    def get_clean_conf(self,option):
+        """获取测试数据清理配置（[CLEAN] 段），供 common/clean_data.py 使用"""
+        return self.get_section_for_data('CLEAN',option)
+
     def get_mysql_conf(self,option):
         """获取Mysql配置信息"""
         return self.get_section_for_data('MYSQL',option)

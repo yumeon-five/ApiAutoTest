@@ -33,6 +33,17 @@ username = change_me
 password = change_me
 database = change_me
 
+# 自动化测试数据清理（common/clean_data.py，由 conftest.py 的 clean_history_data 夹具调用）。
+# 创建入库单等写接口每跑一次就会造一条数据，会话开始前按 creater 前缀清理上一次的遗留数据。
+[CLEAN]
+# 1=开启会话前自动清理，0=关闭
+enable = 1
+# 测试数据标识前缀，与 testcase/asn/asn_create.yaml 里 creater: api_auto_${get_run_id()} 对应
+# 注意：填错会误删手工数据，务必只用在测试环境
+creater_prefix = api_auto
+# 物理清理（python common/clean_data.py）用的 SQLite 路径，相对 auto-test 项目根目录
+sqlite_path = ../GreaterWMS/db.sqlite3
+
 # Redis（common/connection.py 的 RedisClient 用），不需要可以留空
 [REDIS]
 host = 127.0.0.1

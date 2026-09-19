@@ -4,6 +4,7 @@ import time
 import requests
 from common.recordlog import logs
 from common.readyaml import ReadYamlData
+from common.clean_data import clean_asn_by_api
 from common.feishu import send_fs_msg
 from common.operJenkins import OperJenkins
 from conf.operationConfig import OperationConfig
@@ -85,6 +86,37 @@ def login_first(clear_extract_data):
 
     read.write_yaml_data({'token': token, 'operator': operator})
     logs.info(f'前置登录成功，token / operator 已写入 extract.yaml：{token} / {operator}')
+
+
+@pytest.fixture(scope='session', autouse=True)
+def clean_history_data(login_first):
+    """
+    会话开始前清理上一次运行遗留的自动化测试数据。
+
+    为什么需要：创建入库单这类写接口每跑一次就造一条数据，不做清理的话
+    列表查询的 count / results 会被历史数据干扰（也看不到"本次运行造了哪些数据"），
+    测试库还会越跑越大。清理按 creater 前缀识别测试数据（用例里写成 api_auto_${get_run_id()}），
+    不会碰手工造的数据。
+
+    依赖 login_first：清理要带着 token 调接口，所以必须排在登录之后。
+    清理失败只记 warning 不抛异常 —— 它属于收尾工作，不该因为清理出问题就让整个会话跑不起来。
+
+    开关和前缀在 conf/conf.ini 的 [CLEAN] 段配置。
+    """
+    config = OperationConfig()
+    if str(config.get_clean_conf('enable')) != '1':
+        logs.info('测试数据清理未开启（[CLEAN] enable != 1），跳过')
+        return
+
+    prefix = config.get_clean_conf('creater_prefix') or 'api_auto'
+    try:
+        summary = clean_asn_by_api(creater_prefix=prefix)
+        logs.info(f'测试数据清理完成：前缀“{prefix}”匹配到 {summary["found"]} 条，'
+                  f'已删除 {summary["deleted"]} 条，跳过 {summary["skipped"]} 条')
+        for detail in summary['details']:
+            logs.info(f'  清理明细：{detail}')
+    except Exception as e:
+        logs.warning(f'测试数据清理失败，跳过（不影响用例执行）：{e}')
 
 
 @pytest.fixture(scope='session',autouse=True)

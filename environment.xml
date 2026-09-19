@@ -17,7 +17,7 @@
     </parameter>
     <parameter>
         <key>BaseUrl</key>
-        <value>https://127.0.0.1:8787</value>
+        <value>https://127.0.0.1:8008</value>
     </parameter>
     <parameter>
         <key>environment</key>
@@ -25,7 +25,7 @@
     </parameter>
     <parameter>
         <key>Project</key>
-        <value>Ware-Test项目接口自动化测试</value>
+        <value>接口自动化测试</value>
     </parameter>
     <parameter>
         <key>email</key>

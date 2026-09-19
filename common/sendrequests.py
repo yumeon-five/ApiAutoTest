@@ -87,7 +87,7 @@ class SendRequest(object):
 
 
 if __name__ == '__main__':
-    url = 'http://127.0.0.1:8787/dar/user/login'
+    url = 'http://127.0.0.1:8008/dar/user/login'
     data = {
         "user_name": "test01",
         "passwd": "admin123"

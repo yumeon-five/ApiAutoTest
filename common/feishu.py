@@ -40,6 +40,7 @@ def send_fs_msg(content_str, at_all=True):
     :param at_all: @全员，默认为True（通过在文本中插入 <at user_id="all"> 标签实现）
     :return:
     """
+
     timestamp_and_sign = generate_sign()
     # url(飞书机器人Webhook地址)
     url = 'https://open.feishu.cn/open-apis/bot/v2/hook/5e631fa5-4dcd-4ff6-98c5-ae7a80b4b63d'

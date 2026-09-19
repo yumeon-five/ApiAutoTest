@@ -129,15 +129,15 @@ def clean_asn_by_db(creater_prefix=DEFAULT_CREATER_PREFIX, sqlite_path=None, dry
 
     说明：这是绕过接口直接改库，只适合本地/测试环境，生产库不要用。
     :param creater_prefix: 测试数据标识前缀，按 asnlist.creater 前缀匹配
-    :param sqlite_path: SQLite 文件路径，缺省取 conf.ini 的 [CLEAN] sqlite_path
+    :param sqlite_path: SQLite 文件路径，缺省取 conf.ini 的 [DB] sqlite_path
     :param dry_run: True 只预览不删除（默认）
     :return: {'asn': 主单数, 'detail': 明细数, 'scanner': 条码数}
     """
-    path = sqlite_path or OperationConfig().get_clean_conf('sqlite_path') \
+    path = sqlite_path or OperationConfig().get_db_conf('sqlite_path') \
         or os.path.join(DIR_PATH, '..', 'GreaterWMS', 'db.sqlite3')
     path = os.path.abspath(path)
     if not os.path.exists(path):
-        raise FileNotFoundError(f'找不到 SQLite 文件：{path}（可在 conf.ini 的 [CLEAN] sqlite_path 里配置）')
+        raise FileNotFoundError(f'找不到 SQLite 文件：{path}（可在 conf.ini 的 [DB] sqlite_path 里配置）')
 
     con = sqlite3.connect(path)
     try:

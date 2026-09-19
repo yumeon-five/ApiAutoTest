@@ -47,6 +47,10 @@
         - not_null: ['$.asn_code', '$.bar_code', '$.create_time']
         # 单号规则：以 ASN 开头（文档要求正则 ^ASN，框架暂无正则断言，用包含替代）
         - contains: {'asn_code': 'ASN'}
+        # 注意：这里不能写 db 断言去核对 asn_code / bar_code。
+        # validation 里的 ${} 是在「发请求之前」替换的，而 asn_code 要等这条用例的响应
+        # 提取到 extract.yaml 之后才存在，写在这里会直接 KeyError。
+        # 落库校验放在下面「按 asn_code 精确筛选」那条用例里（那时 asn_code / bar_code 已经有了）。
       extract:
         # 接口关联：把主键和单号写入 extract.yaml，供后面的用例用
         # ${get_extract_data(asn_id)} / ${get_extract_data(asn_code)} / ${get_extract_data(bar_code)} 引用
@@ -67,6 +71,13 @@
         # 错误信息挂在 creater 字段下（形如 {"creater": ["该字段是必填项。"]}），
         # 提示语随 LANGUAGE_CODE 变化，所以只断言这个字段存在且非空，不断言具体文案
         - not_null: ['$.creater']
+        # 负向落库断言：创建失败绝不能往库里写数据。
+        # 本会话（creater = api_auto_<运行标识>）在「创建成功」用例里已经写了 1 条，
+        # 这里断言库里仍然只有那 1 条 —— 数量没变就说明这次失败请求没有落库
+        - db:
+            sql: "select count(*) as cnt from asnlist where creater = ? and is_delete = 0"
+            params: ["api_auto_${get_run_id()}"]
+            expect: {cnt: 1}
 
     - case_name: 创建失败-creater包含危险字符script
       params:
@@ -81,6 +92,11 @@
         # 原始提示语是 "Bad Data can‘not be store"（中间是个特殊单引号 U+2018），
         # 只取前缀做包含断言，避免被特殊字符和编码问题干扰
         - contains: {'detail': 'Bad Data can'}
+        # 负向落库断言：危险字符被拦截后，库里不能多出记录（同样以本会话的条数为准）
+        - db:
+            sql: "select count(*) as cnt from asnlist where creater = ? and is_delete = 0"
+            params: ["api_auto_${get_run_id()}"]
+            expect: {cnt: 1}
 
 # 场景二：接口关联 —— 用刚创建出来的 asn_code 精确回查列表
 - baseInfo:
@@ -111,3 +127,21 @@
         # 刚创建的主单状态应该是 1
         - contains: {'asn_status': 1}
         - contains: {'supplier': '哇哈哈'}
+        # 落库交叉验证（对应文档里「asnlist 表新增记录 / scanner 表新增条码记录」两条校验点）：
+        # 走到这里时 asn_code / bar_code 已经从创建用例提取到 extract.yaml，可以拿来和库里的值比对了。
+        # 接口说创建成功不算数，库里真有这条数据、且 bar_code 与接口返回一致才算数
+        - db:
+            sql: "select asn_code, bar_code, asn_status, creater from asnlist where asn_code = ? and is_delete = 0"
+            params: ["${get_extract_data(asn_code)}"]
+            rows: 1
+            expect:
+              asn_code: "${get_extract_data(asn_code)}"
+              # bar_code 是服务端按 md5(asn_code) 算的，库里的值必须和接口返回的一致
+              bar_code: "${get_extract_data(bar_code)}"
+              asn_status: 1
+              creater: "api_auto_${get_run_id()}"
+        # 创建主单时服务端会同步写一条 scanner 条码记录，也要确认落库了
+        - db:
+            sql: "select count(*) as cnt from scanner where mode = 'ASN' and code = ?"
+            params: ["${get_extract_data(asn_code)}"]
+            expect: {cnt: 1}

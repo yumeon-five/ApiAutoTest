@@ -23,9 +23,16 @@ host = http://127.0.0.1:8008
 username = change_me
 password = change_me
 
-# 数据库断言（assertions.py 的 db 断言）用。
-# 注意：GreaterWMS 默认用 SQLite（GreaterWMS/db.sqlite3），
-# 下面这组是模板项目遗留的 MySQL 配置，WMS 上要用 db 断言需要先改成实际的库。
+# 数据库断言（common/connection.py + assertions.py 的 db 断言）用。
+# type 决定用哪种库：sqlite（GreaterWMS 默认）/ mysql；
+# 两种连接的 query() 都返回 list[dict]，所以断言写法不随库类型变化。
+[DB]
+type = sqlite
+# SQLite 文件路径，相对 auto-test 项目根目录；断言以只读方式打开（避免测试代码误改数据）
+sqlite_path = ../GreaterWMS/db.sqlite3
+
+# MySQL 连接参数（[DB] type = mysql 时才用）。
+# 注意：GreaterWMS 用的是 SQLite，下面这组是模板项目遗留的配置，换成 MySQL 的被测系统时再改。
 [MYSQL]
 host = 127.0.0.1
 port = 3306
@@ -41,8 +48,6 @@ enable = 1
 # 测试数据标识前缀，与 testcase/asn/asn_create.yaml 里 creater: api_auto_${get_run_id()} 对应
 # 注意：填错会误删手工数据，务必只用在测试环境
 creater_prefix = api_auto
-# 物理清理（python common/clean_data.py）用的 SQLite 路径，相对 auto-test 项目根目录
-sqlite_path = ../GreaterWMS/db.sqlite3
 
 # Redis（common/connection.py 的 RedisClient 用），不需要可以留空
 [REDIS]

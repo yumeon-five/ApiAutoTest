@@ -4,7 +4,7 @@ import operator
 import allure
 import jsonpath
 
-from common.connection import ConnectMysql
+from common.connection import get_db_client
 from common.recordlog import logs
 
 class Assertions:
@@ -276,20 +276,86 @@ class Assertions:
             logs.error(e)
             raise
         return flag
-    def assert_mysql(self,expected_sql):
+    def assert_db(self,db_case):
         """
-        5.数据库断言模式
-        :param expected_sql: 预期结果，yaml文件中的SQL语句
-        :return: 返回flag标识，0表示通过，非0表示测试失败
+        5.数据库断言：执行 SQL，并把查询结果与期望值比对
+        （拿库里的真实数据和接口返回值做交叉验证，纯接口断言做不到这类判定）
+
+        yaml 写法（validation 里的一条）：
+            - db:
+                sql: "select asn_code, bar_code from asnlist where asn_code = ?"
+                params: ["${get_extract_data(asn_code)}"]   # 可选，占位符用 ?（参数化，不拼字符串）
+                rows: 1                                      # 可选，期望命中的行数
+                expect:                                      # 可选，期望的字段值（取第一行比对）
+                  asn_code: "${get_extract_data(asn_code)}"
+                  bar_code: "${get_extract_data(bar_code)}"
+                                                                 负向断言示例（库里不应新增记录）：
+            - db:
+                sql: "select count(*) as cnt from asnlist where creater = ?"
+                params: ["api_auto_${get_run_id()}"]
+                expect: {cnt: 1}
+
+        :param db_case: dict，必须包含 sql；rows / expect 至少要有一个，否则这条断言没有任何判定依据
+        :return: flag 标识，0 表示通过，非 0 表示失败
+
+        说明：原来的实现（assert_mysql）只判断「查询结果不是 None」，
+        空结果集（[]）也会被判为通过 —— 等于只要有张表、SQL 不报错就算过，
+        做不了「库里的值 = 接口返回的值」这种校验，所以这里重写。
         """
-        flag=0
-        conn = ConnectMysql()
-        db_value = conn.query(expected_sql)
-        if db_value is not None:
-            logs.info("数据库断言成功")
-        else:
+        flag = 0
+        if not isinstance(db_case, dict) or not db_case.get('sql'):
+            raise AssertionError(f'db 断言写法错误，至少要写 sql：{db_case}')
+
+        sql = db_case['sql']
+        params = db_case.get('params')
+        expect_rows = db_case.get('rows')
+        expect_fields = db_case.get('expect')
+
+        if expect_rows is None and not expect_fields:
+            raise AssertionError(f'db 断言必须至少写 rows 或 expect 之一，否则没有判定依据：{db_case}')
+
+        conn = get_db_client()
+        rows = conn.query(sql, params)
+        if rows is None:
             flag += 1
-            logs.error("数据库断言失败，请检查数据库是否存在该数据！")
+            logs.error(f'数据库断言失败：SQL 执行失败或数据库未连通。SQL={sql}，参数={params}')
+            allure.attach(f'SQL:{sql}\n参数:{params}\n实际结果:查询失败',
+                          '数据库断言结果:失败', allure.attachment_type.TEXT)
+            return flag
+
+        logs.info(f'数据库断言 SQL：{sql}，参数：{params} -> 命中 {len(rows)} 行：{rows}')
+
+        # 1) 行数断言
+        if expect_rows is not None and len(rows) != expect_rows:
+            flag += 1
+            logs.error(f'数据库断言失败：期望命中 {expect_rows} 行，实际 {len(rows)} 行')
+            allure.attach(f'SQL:{sql}\n参数:{params}\n预期行数:{expect_rows}\n实际行数:{len(rows)}\n实际结果:{rows}',
+                          '数据库断言结果:失败', allure.attachment_type.TEXT)
+
+        # 2) 字段值断言（取第一行比对）
+        if expect_fields:
+            if not rows:
+                flag += 1
+                logs.error(f'数据库断言失败：期望的字段值无从比对，查询结果为空。{expect_fields}')
+                allure.attach(f'SQL:{sql}\n参数:{params}\n预期字段值:{expect_fields}\n实际结果:查询结果为空',
+                              '数据库断言结果:失败', allure.attachment_type.TEXT)
+            else:
+                actual_row = rows[0]
+                mismatch = {}
+                for field, expect_value in expect_fields.items():
+                    actual_value = actual_row.get(field)
+                    if actual_value != expect_value:
+                        mismatch[field] = {'预期': expect_value, '实际': actual_value}
+                if mismatch:
+                    flag += 1
+                    logs.error(f'数据库断言失败：字段值与预期不一致 {mismatch}')
+                    allure.attach(f'SQL:{sql}\n参数:{params}\n不一致字段:{mismatch}\n实际行:{actual_row}',
+                                  '数据库断言结果:失败', allure.attachment_type.TEXT)
+                else:
+                    logs.info(f'数据库字段值断言成功：{expect_fields}')
+
+        if flag == 0:
+            logs.info('数据库断言通过')
         return flag
 
     def assert_result(self,expected,response,status_code):
@@ -330,7 +396,7 @@ class Assertions:
                         flag = self.assert_response_any(actual_results=response, expected_results=value)
                         all_flag = all_flag + flag
                     elif key == 'db':
-                        flag = self.assert_mysql(value)
+                        flag = self.assert_db(value)
                         all_flag = all_flag + flag
                     elif key == 'not_null':
                         flag = self.not_null_assert(value, response)

@@ -42,6 +42,10 @@ class OperationConfig:
         """获取测试数据清理配置（[CLEAN] 段），供 common/clean_data.py 使用"""
         return self.get_section_for_data('CLEAN',option)
 
+    def get_db_conf(self,option):
+        """获取数据库断言配置（[DB] 段），供 common/connection.py 选择 sqlite / mysql 使用"""
+        return self.get_section_for_data('DB',option)
+
     def get_mysql_conf(self,option):
         """获取Mysql配置信息"""
         return self.get_section_for_data('MYSQL',option)

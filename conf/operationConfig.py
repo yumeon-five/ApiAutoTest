@@ -58,6 +58,11 @@ class OperationConfig:
         """获取redis配置信息"""
         return self.get_section_for_data('REDIS',option)
 
+    def get_feishu_conf(self, option):
+        """获取飞书通知配置（[FEISHU] 段），供 common/feishu.py 使用"""
+        return self.get_section_for_data('FEISHU', option)
+
+
 if __name__ == '__main__':
     oper=OperationConfig()
     print(oper.get_section_for_data('api_envi', 'host'))

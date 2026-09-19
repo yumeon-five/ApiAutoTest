@@ -71,3 +71,14 @@ username = change_me
 password = change_me
 timeout = 30
 job_name = change_me
+
+# 飞书通知（conftest.py 收尾时推送测试结果）
+[FEISHU]
+# 自定义机器人 Webhook：飞书群 → 设置 → 群机器人 → 添加机器人 → 自定义机器人
+webhook =
+# 签名校验密钥：机器人没开"签名校验"就留空；
+# 开了但填错，飞书会返回 sign match fail（错误码 19021）
+secret =
+# 自定义关键词：机器人开了「自定义关键词」安全设置时必填（填其中一个词即可）。
+# 不填的话飞书返回 19024 Key Words Not Found —— 消息里不包含该关键词
+keyword =

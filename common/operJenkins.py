@@ -6,7 +6,7 @@
 #   3) report_success_or_fail：统计通过/失败/跳过数、执行时长并提取报告链接，用于结果通知。
 # ------------------------------------------------------------
 import re
-
+import os
 import jenkins
 from conf.operationConfig import OperationConfig
 
@@ -60,13 +60,18 @@ class OperJenkins(object):
         return report
 
     def report_success_or_fail(self):
-        """统计测试报告用例成功数、失败数、跳过数以及成功率、失败率"""
-        report_info = self.get_build_report()
-        # 提取测试报告链接
+        """返回本次构建的报告链接。优先用 Jenkins 注入的 BUILD_URL 自己拼，不写死地址。"""
+        build_url = os.environ.get('BUILD_URL')
+        if build_url:
+            # Jenkins 的 Allure 插件会把报告发布在 <构建地址>/allure/
+            # （前提是 job 里配了 Allure 后置步骤，且结果目录叫 allure-results —— 见 ci 脚本里的复制那步）
+            return build_url.rstrip('/') + '/allure/'
+        # 本地手工执行时没有 BUILD_URL，回退到从控制台日志里找（地址/job 名从 conf 读）
+        url = conf.get_section_jenkins('url').rstrip('/')
+        job = conf.get_section_jenkins('job_name')
         console_log = self.get_console_log()
-        report_line = re.search(r'http://192.168.105.36:8088/job/hbjjapi/(.*?)allure', console_log).group(0)
-
-        return report_line
+        m = re.search(rf'{re.escape(url)}/job/{re.escape(job)}/.*?allure', console_log)
+        return m.group(0) if m else '（未取到报告链接）'
 
 
 if __name__ == '__main__':

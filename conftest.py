@@ -179,13 +179,15 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     duration = time.time() - _SESSION_START_TIME
     print(f'测试用例执行时常:{duration:.2f}s')
     # Jenkins / 飞书属于外部通知服务，失败时不应影响 pytest 收尾
+    report = '未获取到报告链接'
     try:
         oper = OperJenkins()
         report = oper.report_success_or_fail()
     except Exception as e:
-        logs.warning(f'获取 Jenkins 测试报告失败，跳过通知：{e}')
-        report = '获取失败'
-        return
+        # 关键：这里绝对不能 return！
+        # 原来写成 return，导致「Jenkins 拿不到报告链接」时整条飞书通知都不发了 ——
+        # 通知里少一个链接可以接受，一条通知都不发才是真问题
+        logs.warning(f'获取 Jenkins 测试报告链接失败，通知里将不带链接：{e}')
     content = f"""
     自动化测试结果，通知如下，请着重关注测试失败的接口，具体执行结果如下：
     测试用例总数：{case_total}
@@ -197,7 +199,8 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     点击查看测试报告：{report}
     """
     try:
-        send_fs_msg(content)
+        # 只有失败/错误时才 @所有人：定时构建每天都 @ 全员会很烦，全绿时安静一点
+        send_fs_msg(content, at_all=(failed + error) > 0)
     except Exception as e:
         logs.warning(f'发送飞书通知失败：{e}')
 

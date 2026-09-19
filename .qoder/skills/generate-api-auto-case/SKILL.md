@@ -121,7 +121,7 @@ description: 根据接口文档/需求文档批量生成结构化的接口测试
 
 **依赖**：`openpyxl`（缺失时脚本会提示 `pip install openpyxl`）。
 
-**执行命令**（在项目根目录 `d:/projects/auto-test` 下）：
+**执行命令**（在项目根目录 `d:/projects/test02/auto-test` 下）：
 
 ```bash
 # 基本用法：输出 xlsx 与 接口_index.json 到 cases.json 同目录

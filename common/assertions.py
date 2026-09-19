@@ -1,3 +1,4 @@
+import json
 import operator
 
 import allure
@@ -14,7 +15,32 @@ class Assertions:
     3.结果不相等断言
     4.断言接口返回值里面的任意一个值
     5.数据库断言
+    6.字段存在且非空断言（not_null）
+    7.字段不存在断言（not_exists，负向断言）
+    8.数值大于断言（gt）
     """
+
+    def _get_by_jsonpath(self,response,expression):
+        """
+        按 JSONPath 从响应里取值，返回 (是否取到, 值) 二元组。
+
+        为什么要单独封装：jsonpath.jsonpath() 匹配不到时返回的是布尔值 False，
+        取到 JSON null 时返回的是 [None]——两者要区分开，
+        否则「字段不存在」和「字段存在但值为 null」会给出同样的错误提示。
+
+        实测：
+            jsonpath.jsonpath({'data': {'password': None}}, '$.data.password') -> [None]
+            jsonpath.jsonpath({'data': {}}, '$.data.openid')                   -> False
+        """
+        try:
+            result = jsonpath.jsonpath(response, expression)
+        except Exception as e:
+            logs.error(f'JSONPath 表达式解析失败：{expression}，原因：{e}')
+            return False, None
+        # False 表示没匹配到；不是 list 或空 list 也视为没取到
+        if result is False or not isinstance(result, list) or len(result) == 0:
+            return False, None
+        return True, result[0]
 
     def contains_assert(self,value,response,status_code):
         """
@@ -34,6 +60,15 @@ class Assertions:
                     logs.error('contanis断言失败，接口返回【%s】不等于【%s】'%(status_code,assert_value))
             else:
                 resp_list=jsonpath.jsonpath(response,'$..%s' %assert_key)
+                # 修复：字段不存在时 jsonpath 返回 False，原来直接取 resp_list[0] 会抛
+                # TypeError: 'bool' object is not subscriptable，把「断言失败」变成「用例报错」。
+                # 这里改为明确判定为断言失败，并记录可读的失败原因。
+                if resp_list is False or not resp_list:
+                    flag+=1
+                    logs.error(f'响应断言结果:失败!响应中不存在字段:{assert_key}，预期结果为:{assert_value}')
+                    allure.attach(f'预期字段:{assert_key}\n预期结果:{assert_value}\n实际结果:响应中不存在该字段',
+                                  '响应文本断言结果:失败',allure.attachment_type.TEXT)
+                    continue
                 if isinstance(resp_list[0],str):
                     resp_list=','.join(resp_list)
                     if assert_value in resp_list:
@@ -48,29 +83,136 @@ class Assertions:
 
     def equal_assert(self,value,response):
         """
-        2.结果相等断言模式
+        2.结果相等断言模式（子集比较）
+
         :param value:预期结果，也就是yaml文件里面的validation关键字下的参数 dict类型
         :param response:接口的实际返回结果  dict类型
         :return:flag标识，0表示测试通过，非0表示测试不通过
+
+        修复了两个问题：
+        1）原来只支持「单个字段」的相等断言：它用 list(value.keys())[0] 取第一个 key，
+           把响应里其它 key 全删掉再整体比较，所以写
+           `eq: {'code': '200', 'msg': 'Success Create'}` 必然失败（响应已被删成只剩 code）。
+           现在改成：只比较 expected 里写出来的字段，写几个比几个。
+        2）原来用 `del response[rl]` 就地修改了传入的响应字典，
+           同一个用例里 eq 后面再写 contains/rv 断言，拿到的会是被截断的响应。
+           现在只读不写，response 在整个用例的断言过程中保持不变。
         """
         flag=0
-        res_list=[]
-        if isinstance(value,dict) and isinstance(response,dict):
-            #处理实际结果的数据结构，保持与预期结果的数据结构一致
-            for res in response:
-                if list(value.keys())[0]!=res:
-                    res_list.append(res)
-            for rl in res_list:
-                del response[rl]
-            #通过判断实际结果的字典和预期结果的字典
-            eq_assert=operator.eq(response,value)
-            if eq_assert:
-                logs.info(f'相等断言成功:接口的实际结果为:{response}，等于预期结果:{str(value)}')
-            else:
-                flag=flag+1
-                logs.info(f'相等断言失败:接口的实际结果为:{response}，不等于预期结果:{str(value)}')
-        else:
+        if not (isinstance(value,dict) and isinstance(response,dict)):
             raise TypeError('相等断言失败--类型错误,预期结果和接口的实际响应结果必须为字典类型！')
+
+        # 只从实际响应里摘出「预期结果声明过的字段」，形成子集
+        actual_subset={}
+        missing_keys=[]
+        for key in value:
+            if key in response:
+                actual_subset[key]=response[key]
+            else:
+                missing_keys.append(key)
+
+        if missing_keys:
+            flag+=1
+            logs.error(f'相等断言失败:响应中不存在预期字段:{missing_keys}，实际响应:{response}')
+            allure.attach(f'预期结果:{str(value)}\n实际结果:响应中不存在字段{missing_keys}\n完整响应:{json.dumps(response,ensure_ascii=False)}',
+                          '相等断言结果:失败',allure.attachment_type.TEXT)
+            return flag
+
+        if operator.eq(actual_subset,value):
+            logs.info(f'相等断言成功:接口的实际结果为:{actual_subset}，等于预期结果:{str(value)}')
+        else:
+            flag=flag+1
+            logs.error(f'相等断言失败:接口的实际结果为:{actual_subset}，不等于预期结果:{str(value)}')
+            allure.attach(f'预期结果:{str(value)}\n实际结果:{str(actual_subset)}','相等断言结果:失败',
+                          allure.attachment_type.TEXT)
+        return flag
+
+    def not_null_assert(self,expressions,response):
+        """
+        6.字段存在且非空断言
+
+        :param expressions:JSONPath 表达式列表，例如 ['$.data.openid', '$.data.user_id']
+                           也可以只写一个字符串 '$.data.openid'
+        :param response:接口的实际返回结果 dict
+        :return:flag标识，0表示测试通过
+
+        为什么需要它：原有的 contains 断言对空字符串恒为真（'' in '任意字符串' 永远是 True），
+        rv 断言只能和固定值做相等比较——两者都表达不了「字段存在且非空」这个最常见的断言要求。
+        """
+        flag=0
+        # 兼容只写一个 JSONPath 字符串的写法，统一转成 list 处理
+        if isinstance(expressions,str):
+            expressions=[expressions]
+
+        for expression in expressions:
+            exists,value=self._get_by_jsonpath(response,expression)
+            if not exists:
+                flag+=1
+                logs.error(f'存在性断言失败:[{expression}] 在响应中取不到对应的字段')
+                allure.attach(f'JSONPath:{expression}\n实际结果:字段不存在\n完整响应:{json.dumps(response,ensure_ascii=False)}',
+                              '字段存在且非空断言:失败',allure.attachment_type.TEXT)
+            elif value is None or value == '' or value == [] or value == {}:
+                # 字段取到了，但值是空的（null / 空字符串 / 空列表 / 空字典）同样判定失败
+                flag+=1
+                logs.error(f'存在性断言失败:[{expression}] 取到的值为空 -> {value!r}')
+                allure.attach(f'JSONPath:{expression}\n实际结果:字段值为空 {value!r}',
+                              '字段存在且非空断言:失败',allure.attachment_type.TEXT)
+            else:
+                logs.info(f'存在性断言成功:[{expression}] -> {value!r}')
+        return flag
+
+    def not_exists_assert(self,expressions,response):
+        """
+        7.字段不存在断言（负向断言）
+
+        :param expressions:JSONPath 表达式列表，例如 ['$.data.openid']
+        :param response:接口的实际返回结果 dict
+        :return:flag标识，0表示测试通过
+
+        典型用途：登录失败、鉴权失败时断言「响应里不能出现 openid / token」，
+        这类负向断言在安全回归里最容易被漏掉。
+        """
+        flag=0
+        if isinstance(expressions,str):
+            expressions=[expressions]
+
+        for expression in expressions:
+            exists,value=self._get_by_jsonpath(response,expression)
+            if exists:
+                flag+=1
+                logs.error(f'不存在断言失败:[{expression}] 不应该出现，实际取到的值为 {value!r}')
+                allure.attach(f'JSONPath:{expression}\n实际结果:字段存在且值为 {value!r}\n完整响应:{json.dumps(response,ensure_ascii=False)}',
+                              '字段不存在断言:失败',allure.attachment_type.TEXT)
+            else:
+                logs.info(f'不存在断言成功:[{expression}] 未在响应中出现')
+        return flag
+
+    def gt_assert(self,value,response):
+        """
+        8.数值大于断言
+
+        :param value:字典，key 是 JSONPath，value 是阈值，例如 {'$.data.user_id': 0}
+        :param response:接口的实际返回结果 dict
+        :return:flag标识，0表示测试通过
+
+        典型用途：登录成功后断言 data.user_id（staff 表主键）为正整数。
+        """
+        flag=0
+        for expression,expected in value.items():
+            exists,actual=self._get_by_jsonpath(response,expression)
+            # bool 是 int 的子类，需要单独排除，避免 True 被当成 1 通过断言
+            if not exists or isinstance(actual,bool) or not isinstance(actual,(int,float)):
+                flag+=1
+                logs.error(f'数值断言失败:[{expression}] 期望是数字且大于 {expected}，实际取到:{actual!r}(字段不存在或类型不是数字)')
+                allure.attach(f'JSONPath:{expression}\n预期:大于 {expected} 的数字\n实际:{actual!r}',
+                              '数值比较断言:失败',allure.attachment_type.TEXT)
+            elif actual <= expected:
+                flag+=1
+                logs.error(f'数值断言失败:[{expression}] 期望大于 {expected}，实际为 {actual}')
+                allure.attach(f'JSONPath:{expression}\n预期:大于 {expected}\n实际:{actual}',
+                              '数值比较断言:失败',allure.attachment_type.TEXT)
+            else:
+                logs.info(f'数值断言成功:[{expression}] {actual} > {expected}')
         return flag
 
     def not_equal_assert(self,expected_results,actual_results):
@@ -145,9 +287,20 @@ class Assertions:
         :param response:接口的实际返回结果 json格式
         :param status_code:接口的实际返回状态码
         :return:
+
+        修复的坑：原来遇到不认识的断言关键字（例如把 eq 拼成 eqq）时，
+        只在日志里打一句「不支持此种断言方式」就继续往下走，
+        all_flag 仍然是 0，最后 assert True —— 用例全绿但一条断言都没执行。
+        现在改为：未知关键字、validation 缺失/为空，都直接判定用例失败。
         """
         all_flag=0
-        # 断言状态标识，0代表成功，其他代表失败
+        # 支持的关键字列表，新增断言模式时要同步维护这里
+        supported_keys=('contains','eq','ne','rv','db','not_null','not_exists','gt')
+        unknown_keys=[]
+        # validation 没写或者写成空列表时，用例实际上没有任何校验，不能算通过
+        # 注意：这个判断放在 try 外面，报错信息才不会被下面的 except 包装成「接口断言异常」
+        if not expected:
+            raise AssertionError('validation 未配置或为空，该用例没有任何断言，不允许判定为通过')
         try:
             logs.info("yaml文件预期结果：%s" % expected)
             for expected_result in expected:
@@ -167,12 +320,28 @@ class Assertions:
                     elif key == 'db':
                         flag = self.assert_mysql(value)
                         all_flag = all_flag + flag
+                    elif key == 'not_null':
+                        flag = self.not_null_assert(value, response)
+                        all_flag = all_flag + flag
+                    elif key == 'not_exists':
+                        flag = self.not_exists_assert(value, response)
+                        all_flag = all_flag + flag
+                    elif key == 'gt':
+                        flag = self.gt_assert(value, response)
+                        all_flag = all_flag + flag
                     else:
-                        logs.error("不支持此种断言方式")
+                        # 记录未知关键字，循环结束后统一失败，避免「静默通过」
+                        unknown_keys.append(key)
+                        logs.error("不支持此种断言方式:%s" % key)
 
         except Exception as exceptions:
             logs.error('接口断言异常，请检查yaml预期结果值是否正确填写!')
             raise exceptions
+
+        if unknown_keys:
+            assert False, (f'validation 中出现了不支持的断言关键字:{unknown_keys}，'
+                           f'当前支持:{list(supported_keys)}；请检查是否拼写错误')
+
         if all_flag == 0:
             logs.info("测试成功")
             assert True

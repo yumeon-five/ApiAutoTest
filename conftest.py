@@ -28,26 +28,54 @@ def clear_extract_data():
 @pytest.fixture(scope='session', autouse=True)
 def login_first(clear_extract_data):
     """
-    业务线前置：会话开始先登录一次，把 token 写入 extract.yaml。
+    业务线前置：会话开始先登录一次，把 token / operator 写入 extract.yaml。
 
-    用户管理、商品管理等模块的用例里写了 ${get_extract_data(token)} 做接口关联，
-    而 clear_extract_data 每次会话都会清空 extract.yaml，因此必须先登录拿 token；
+    用户管理、商品管理、ASN 入库等模块的用例里写了 ${get_extract_data(token)} 做接口关联，
+    而 clear_extract_data 每次会话都会清空 extract.yaml，因此必须先登录拿凭证；
     否则 get_extract_data('token') 会抛 KeyError: 'token'。
     显式依赖 clear_extract_data，保证「先清空、再登录」的顺序。
+
+    写入的两个变量（对应 WMS 的两个请求头，见 GreaterWMS/utils/auth.py 和 asn/views.py）：
+      token    -> data.openid，DRF 接口读 HTTP_TOKEN
+      operator -> data.user_id（staff 表主键），写操作接口读 HTTP_OPERATOR
+
+    修复记录：
+    1) 原来请求的是 /dar/user/login + form 参数 user_name/passwd，那是另一个项目的接口，
+       WMS 实际是 /login/ + JSON 参数 name/password，导致每次运行都报
+       「前置登录异常：Expecting value: line 1 column 1 (char 0)」（404 返回 HTML，res.json() 解析失败）。
+    2) 原来失败只 log.error 不抛异常，属于静默失败：依赖 token 的模块会在后面
+       以 KeyError: 'token' 这种毫不相干的报错挂掉。现在改为 pytest.fail 快速失败，
+       让问题在会话最开头就暴露出来。
     """
-    host = OperationConfig().get_envi('host')
+    config = OperationConfig()
+    host = config.get_envi('host')
+    # 账号密码统一放在 conf/conf.ini 的 [LOGIN] 段，代码里不再硬编码
+    username = config.get_login_conf('username')
+    password = config.get_login_conf('password')
+    url = f'{host}/login/'
     try:
-        res = requests.post(f'{host}/dar/user/login',
-                            data={'user_name': 'test01', 'passwd': 'admin123'},
-                            timeout=10)
-        token = res.json().get('token')
-        if token:
-            read.write_yaml_data({'token': token})
-            logs.info(f'前置登录成功，token 已写入 extract.yaml：{token}')
-        else:
-            logs.error(f'前置登录未获取到 token，响应内容：{res.text}')
+        res = requests.post(url, json={'name': username, 'password': password}, timeout=10)
     except Exception as e:
-        logs.error(f'前置登录异常：{e}')
+        pytest.fail(f'前置登录请求异常：{url} -> {e}')
+
+    # 接口返回非 JSON（404 页面 / 500 错误页）时，给出能直接定位问题的报错，
+    # 而不是让 res.json() 抛 JSONDecodeError 这种看不出根因的异常
+    try:
+        res_json = res.json()
+    except ValueError:
+        pytest.fail(f'前置登录返回的不是 JSON，请确认接口地址与后端服务是否正常：{url}\n'
+                    f'HTTP {res.status_code}\n响应内容：{res.text[:500]}')
+
+    data = res_json.get('data') or {}
+    token = data.get('openid')
+    operator = data.get('user_id')
+    if str(res_json.get('code')) != '200' or not token or not operator:
+        pytest.fail(f'前置登录失败：url={url}，账号={username}\n'
+                    f'响应={res_json}\n'
+                    f'（请检查 conf/conf.ini 的 [LOGIN] 账号是否存在、密码是否正确）')
+
+    read.write_yaml_data({'token': token, 'operator': operator})
+    logs.info(f'前置登录成功，token / operator 已写入 extract.yaml：{token} / {operator}')
 
 
 @pytest.fixture(scope='session',autouse=True)

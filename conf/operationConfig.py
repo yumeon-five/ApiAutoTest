@@ -34,6 +34,10 @@ class OperationConfig:
         """获取接口服务器的ip地址"""
         return self.get_section_for_data('api_envi',option)
 
+    def get_login_conf(self,option):
+        """获取业务前置登录账号信息（[LOGIN] 段），供 conftest.py 的 login_first 夹具使用"""
+        return self.get_section_for_data('LOGIN',option)
+
     def get_mysql_conf(self,option):
         """获取Mysql配置信息"""
         return self.get_section_for_data('MYSQL',option)

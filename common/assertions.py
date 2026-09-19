@@ -5,6 +5,7 @@ import allure
 import jsonpath
 
 from common.connection import get_db_client
+from common.readyaml import ReadYamlData
 from common.recordlog import logs
 
 class Assertions:
@@ -310,9 +311,17 @@ class Assertions:
         params = db_case.get('params')
         expect_rows = db_case.get('rows')
         expect_fields = db_case.get('expect')
+        # delta_from：增量断言。值是 testCase 里 db_before 定义的基线名，
+        # 填了它以后 expect 里的值表示「相对基线的变化量」而不是绝对值。
+        # 典型用法：库存字段 goods_qty / asn_stock 每跑一次就涨一次，只断言增量才可重复运行。
+        delta_from = db_case.get('delta_from')
 
         if expect_rows is None and not expect_fields:
             raise AssertionError(f'db 断言必须至少写 rows 或 expect 之一，否则没有判定依据：{db_case}')
+
+        baseline = None
+        if delta_from:
+            baseline = ReadYamlData().get_extract_yaml(delta_from)
 
         conn = get_db_client()
         rows = conn.query(sql, params)
@@ -323,7 +332,8 @@ class Assertions:
                           '数据库断言结果:失败', allure.attachment_type.TEXT)
             return flag
 
-        logs.info(f'数据库断言 SQL：{sql}，参数：{params} -> 命中 {len(rows)} 行：{rows}')
+        logs.info(f'数据库断言 SQL：{sql}，参数：{params} -> 命中 {len(rows)} 行：{rows}'
+                  + (f'（基线 {delta_from}={baseline}）' if delta_from else ''))
 
         # 1) 行数断言
         if expect_rows is not None and len(rows) != expect_rows:
@@ -335,16 +345,29 @@ class Assertions:
         # 2) 字段值断言（取第一行比对）
         if expect_fields:
             if not rows:
-                flag += 1
-                logs.error(f'数据库断言失败：期望的字段值无从比对，查询结果为空。{expect_fields}')
-                allure.attach(f'SQL:{sql}\n参数:{params}\n预期字段值:{expect_fields}\n实际结果:查询结果为空',
-                              '数据库断言结果:失败', allure.attachment_type.TEXT)
+                # 增量断言的特殊情况：基线和当前都查不到数据，说明状态压根没变化。
+                # 对「失败用例不得写库」这类断言来说，这正是要的结果，应判通过
+                if delta_from and baseline is None:
+                    logs.info(f'数据库增量断言通过：基线与当前都查不到数据（{delta_from}），状态未变化')
+                else:
+                    flag += 1
+                    logs.error(f'数据库断言失败：期望的字段值无从比对，查询结果为空。{expect_fields}')
+                    allure.attach(f'SQL:{sql}\n参数:{params}\n预期字段值:{expect_fields}\n实际结果:查询结果为空',
+                                  '数据库断言结果:失败', allure.attachment_type.TEXT)
             else:
                 actual_row = rows[0]
                 mismatch = {}
                 for field, expect_value in expect_fields.items():
                     actual_value = actual_row.get(field)
-                    if actual_value != expect_value:
+                    if delta_from and isinstance(baseline, dict) and field in baseline \
+                            and isinstance(actual_value, (int, float)) \
+                            and isinstance(baseline[field], (int, float)):
+                        # 增量比对：实际值 - 基线值 == 预期增量
+                        change = round(actual_value - baseline[field], 6)
+                        if change != expect_value:
+                            mismatch[field] = {'预期增量': expect_value, '实际增量': change,
+                                               '基线': baseline[field], '实际': actual_value}
+                    elif actual_value != expect_value:
                         mismatch[field] = {'预期': expect_value, '实际': actual_value}
                 if mismatch:
                     flag += 1

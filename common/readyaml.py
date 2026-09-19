@@ -77,6 +77,15 @@ class ReadYamlData(object):
             print('extract.yaml文件创建成功!')
         with open(file_path, 'r', encoding='utf-8') as f:
             extract_data=yaml.safe_load(f) or {}
+            # 取不到变量时给出能定位的报错：接口关联依赖「前面的用例先执行并提取」这个变量。
+            # 例如单独跑 testcase/asn/test_asn_detail.py（-k 筛选或直接指定文件）时，
+            # 因为没有先跑 test_asn_create.py 生成 asn_code，这里就取不到；
+            # 原来只抛一个 KeyError: 'asn_code'，看不出是执行顺序问题还是变量名写错了。
+            if node_name not in extract_data:
+                raise KeyError(
+                    f'extract.yaml 里没有 "{node_name}"。接口关联依赖前面的用例先执行并提取该变量，'
+                    f'当前已提取的变量：{list(extract_data.keys())}。'
+                    f'（例如只跑 testcase/asn/test_asn_detail.py 时，需要先跑 testcase/asn/test_asn_create.py）')
             return extract_data[node_name]
 
     def clear_yaml_data(self):

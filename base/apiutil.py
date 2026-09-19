@@ -12,6 +12,7 @@ from common.readyaml import get_testcase_yaml
 from common.recordlog import logs
 from common.sendrequests import SendRequest
 from common.assertions import Assertions
+from common.connection import get_db_client
 from conf.operationConfig import OperationConfig
 
 assert_res = Assertions()
@@ -107,6 +108,8 @@ class BaseRequest(object):
             #处理参数提取
             extract=test_case.pop('extract',None)
             extract_list=test_case.pop('extract_list',None)
+            # 数据库基线快照：必须在发请求之前查库并落盘，供「增量断言」比对（见 snapshot_db）
+            db_before=test_case.pop('db_before',None)
             #处理接口的请求参数
             for key, value in test_case.items():
                 if key in params_type:
@@ -118,7 +121,9 @@ class BaseRequest(object):
                     allure.attach(json.dumps(file),'导入文件')
                     files={fk:open(fv,mode='rb')}
 
-
+            # 发请求之前先做数据库基线快照（放在这里：既在请求之前，又能用到上面已经解析过的 extract.yaml）
+            if db_before is not None:
+                self.snapshot_db(db_before)
 
             res = self.send.run_main(name=api_name, url=url, case_name=case_name, method=method, header=header,
                                      cookies=cookie, file=files, **test_case)
@@ -134,6 +139,31 @@ class BaseRequest(object):
         except Exception as e:
             logs.error(e)
             raise e
+
+    def snapshot_db(self, snapshot_cases):
+        """
+        执行数据库查询并把结果写入 extract.yaml，作为「增量断言」的基线（发请求之前执行）。
+
+        为什么需要：有些字段只能断言「变化量」而不能断言绝对值。
+        比如库存 stocklist.goods_qty —— 加一次明细它就涨一次，同一套用例跑第二遍，
+        绝对值的期望就过期了；而且同一个商品在库里可能有多行库存记录，更没法写死。
+        有了基线，断言就可以写成「本次执行后 - 执行前 == 预期增量」。
+
+        yaml 写法（testCase 里和 json / validation 同级）：
+            db_before:
+              stock_snapshot:                 # 基线名，validation 里的 delta_from 用它引用
+                sql: "select goods_qty, asn_stock from stocklist where goods_code = ?"
+                params: ["A00001"]
+
+        写入 extract.yaml 的是查询结果的第一行（dict）；查不到数据时写 None（表示"本来就没有这条数据"）。
+        """
+        for key, db_case in snapshot_cases.items():
+            db_case = self.replace_load(db_case)
+            rows = get_db_client().query(db_case.get('sql'), db_case.get('params'))
+            baseline = rows[0] if rows else None
+            logs.info(f'数据库基线快照 {key}：{baseline}')
+            allure.attach(str(baseline), f'数据库基线快照:{key}', allure.attachment_type.TEXT)
+            self.read.write_yaml_data({key: baseline})
 
     def extract_data(self, testcase_extract, response):
         """

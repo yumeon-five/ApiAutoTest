@@ -36,11 +36,19 @@ class BaseRequest(object):
 
         for i in range(str_data.count('${')):
             if "${" in str_data and "}" in str_data:
-                # index检测是否含有${字符，并且找到字符串的索引位置
-                start_index = str_data.index("$")
+                # 注意：这里要找 "${" 而不能只找 "$"。
+                # 断言里会写 JSONPath（not_null / gt 的值形如 $.count、$.data.openid），
+                # 只找 "$" 会先命中 JSONPath 里的 $，把后面一大段内容当成占位符去解析，
+                # 报错是 ValueError: substring not found（apiutil.py 里 index('(') 失败），
+                # 完全看不出根因 —— 这个问题在「同一个用例里既有 ${} 关联又有 JSONPath 断言」时才会暴露。
+                start_index = str_data.index("${")
                 end_index = str_data.index("}", start_index)
                 # 找到字符串的索引位置  ref_all_params: ${get_extract_data(product_id,1)}
                 ref_all_params = str_data[start_index:end_index + 1]
+                # 占位符只支持 ${函数名(参数)} 这种函数调用写法，写错了给一句能看懂的提示
+                if '(' not in ref_all_params:
+                    raise ValueError(f'yaml 里的占位符 {ref_all_params} 写法不支持，'
+                                     f'只支持 ${{函数名(参数)}} 形式，例如 ${{get_extract_data(token)}}')
                 # 取出函数名 func_name : get_extract_data
                 func_name = ref_all_params[2:ref_all_params.index('(')]
                 # 取出函数参数值 func_params product_id,1

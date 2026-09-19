@@ -69,7 +69,7 @@ class Assertions:
                     allure.attach(f'预期字段:{assert_key}\n预期结果:{assert_value}\n实际结果:响应中不存在该字段',
                                   '响应文本断言结果:失败',allure.attachment_type.TEXT)
                     continue
-                if isinstance(resp_list[0],str):
+                if isinstance(resp_list[0],str) and isinstance(assert_value,str):
                     resp_list=','.join(resp_list)
                     if assert_value in resp_list:
                         logs.info(f'字符串断言成功!预期结果为:{assert_value}\n,实际结果为:{resp_list}')
@@ -77,6 +77,18 @@ class Assertions:
                         flag+=1
                         logs.error(f'响应断言结果:失败!预期结果为:{assert_value}\n,实际结果为:{resp_list}')
                         allure.attach(f'预期结果为:{assert_value}\n实际结果为:{resp_list}', '响应文本断言结果:失败',
+                                      allure.attachment_type.TEXT)
+                else:
+                    # 修复：非字符串字段（数字 / 布尔 / 字典等）没有「子串包含」的语义，
+                    # 原来只判断 isinstance(resp_list[0], str)，遇到数字字段会一个分支都不进——
+                    # 既不记日志也不累加 flag，等于「静默通过」。
+                    # 这类字段退化成相等比较：只要有一个匹配值等于预期值就算通过。
+                    if any(item == assert_value for item in resp_list):
+                        logs.info(f'字段值断言成功!预期结果为:{assert_value},实际结果为:{resp_list}')
+                    else:
+                        flag+=1
+                        logs.error(f'响应断言结果:失败!预期结果为:{assert_value},实际结果为:{resp_list}')
+                        allure.attach(f'预期结果为:{assert_value}\n实际结果为:{resp_list}','字段值断言结果:失败',
                                       allure.attachment_type.TEXT)
 
         return flag

@@ -40,10 +40,13 @@
         - gt: {'$.data.user_id': 0}
       extract:
         # 接口关联：把登录结果写入 extract.yaml，供后续模块用 ${get_extract_data(token)} 引用
-        #   token    -> openid，后续 DRF 接口的 token 请求头（utils/auth.py 读 HTTP_TOKEN）
-        #   operator -> staff id，后续写操作接口的 operator 请求头（asn 等接口读 HTTP_OPERATOR）
+        #   token     -> openid，后续 DRF 接口的 token 请求头（utils/auth.py 读 HTTP_TOKEN）
+        #   operator  -> staff id，后续写操作接口的 operator 请求头（asn 等接口读 HTTP_OPERATOR）
+        #   user_name -> 登录名。WMS 里 staff 记录与账号同名，写操作接口落库的 creater 就是它；
+        #                后面断言明细的 creater 时用它，避免把账号名写死在用例里
         token: $.data.openid
         operator: $.data.user_id
+        user_name: $.data.name
 
     - case_name: 登录失败-密码错误（账号存在）
       # 关键：这里必须用真实存在的账号 test666。

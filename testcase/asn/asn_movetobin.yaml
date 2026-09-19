@@ -1,4 +1,4 @@
-# ASN 商品上架（状态 4 -> 5，入库链路最后一步）
+﻿# ASN 商品上架（状态 4 -> 5，入库链路最后一步）
 #
 # 【业务位置】链路第 7 步：完成分拣(3->4) -> 查明细取 detail_id -> 【上架(4->5)】
 # 【前置依赖】test_asn_sorted.py（状态推到 4）+ test_asn_detail_query.py（提取 detail_id）
@@ -34,11 +34,11 @@
           params: ["${get_extract_data(asn_code)}"]
         stock_snapshot:
           sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       json:
         asn_code: ${get_extract_data(asn_code)}
-        goods_code: A00001
-        bin_name: A010101
+        goods_code: ${get_extract_data(goods_code)}
+        bin_name: ${get_extract_data(bin_name)}
         qty: 0
       validation:
         - contains: {'status_code': 200}
@@ -52,7 +52,7 @@
             expect: {sorted_qty: 0}
         - db:
             sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {sorted_stock: 0, onhand_stock: 0, can_order_stock: 0}
 
@@ -65,11 +65,11 @@
           params: ["${get_extract_data(asn_code)}"]
         stock_snapshot:
           sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       json:
         asn_code: ${get_extract_data(asn_code)}
-        goods_code: A00001
-        bin_name: A010101
+        goods_code: ${get_extract_data(goods_code)}
+        bin_name: ${get_extract_data(bin_name)}
         # 实到 5，这里传 6 -> move_qty = 5 - 0 - 6 = -1
         qty: 6
       validation:
@@ -92,7 +92,7 @@
             expect: {sorted_qty: 0}
         - db:
             sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {sorted_stock: 0, onhand_stock: 0, can_order_stock: 0}
 
@@ -102,15 +102,15 @@
       db_before:
         stock_snapshot:
           sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
         bin_snapshot:
           sql: "select count(*) as cnt from stockbin where openid = ? and bin_name = ? and goods_code = ?"
-          params: ["${get_extract_data(token)}", "A010101", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(bin_name)}", "${get_extract_data(goods_code)}"]
       json:
         # 上架数量 = 实到数量（5），走 move_qty == 0 的全量上架分支
         asn_code: ${get_extract_data(asn_code)}
-        goods_code: A00001
-        bin_name: A010101
+        goods_code: ${get_extract_data(goods_code)}
+        bin_name: ${get_extract_data(bin_name)}
         qty: 5
       validation:
         - contains: {'status_code': 200}
@@ -128,12 +128,12 @@
         # 库存流转：已分拣量 -5，到货量 +5，Normal 库位使可用量 +5
         - db:
             sql: "select sorted_stock, onhand_stock, can_order_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {sorted_stock: -5, onhand_stock: 5, can_order_stock: 5}
         # 库位库存：该库位这条商品记录从无到有（增量 1 行）
         - db:
             sql: "select count(*) as cnt from stockbin where openid = ? and bin_name = ? and goods_code = ?"
-            params: ["${get_extract_data(token)}", "A010101", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(bin_name)}", "${get_extract_data(goods_code)}"]
             delta_from: bin_snapshot
             expect: {cnt: 1}

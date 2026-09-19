@@ -1,4 +1,4 @@
-# ASN 预装车（状态 1 -> 2）
+﻿# ASN 预装车（状态 1 -> 2）
 #
 # 【业务位置】ASN 入库链路第 3 步：
 #   创建主单(1) -> 添加明细 -> 【预装车(1->2)】 -> 预分拣(2->3) -> 完成分拣(3->4) -> 上架(4->5)
@@ -32,7 +32,7 @@
       db_before:
         stock_snapshot:
           sql: "select asn_stock, pre_load_stock, goods_qty, onhand_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       validation:
         - contains: {'status_code': 200}
         # 响应是主单对象，直接断言状态流转和主键
@@ -50,7 +50,7 @@
         # 库存流转：ASN 在途量 -5，预装车量 +5，总数与到货量不动
         - db:
             sql: "select asn_stock, pre_load_stock, goods_qty, onhand_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {asn_stock: -5, pre_load_stock: 5, goods_qty: 0, onhand_stock: 0}
 
@@ -60,7 +60,7 @@
       db_before:
         stock_snapshot:
           sql: "select asn_stock, pre_load_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       validation:
         # 上一条用例已经把状态推到 2，这里再点一次应该被拦截
         - contains: {'status_code': 200}
@@ -77,6 +77,6 @@
             expect: {asn_status: 2}
         - db:
             sql: "select asn_stock, pre_load_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {asn_stock: 0, pre_load_stock: 0}

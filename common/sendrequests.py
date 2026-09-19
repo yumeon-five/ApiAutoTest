@@ -29,6 +29,12 @@ class SendRequest(object):
         cookie={}
         session = requests.session()
         result=None
+        # HTTP 头部的值必须是字符串。yaml 里用 ${} 关联出来的值可能是数字
+        # （比如 operator 是登录返回的 data.user_id = 81），
+        # 不转换的话 requests 会抛 InvalidHeader: Header part (81) ... must be of type str or bytes。
+        # 注意只转「头」，请求体（json）和 SQL 参数不转，那里保留原生类型才有意义。
+        if kwargs.get('headers'):
+            kwargs['headers'] = {k: str(v) for k, v in kwargs['headers'].items()}
         try:
             result=session.request(**kwargs)
             set_cookie=requests.utils.dict_from_cookiejar(result.cookies)

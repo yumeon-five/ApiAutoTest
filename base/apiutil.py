@@ -56,9 +56,18 @@ class BaseRequest(object):
                 func_params = ref_all_params[ref_all_params.index('(') + 1:ref_all_params.index(')')]
                 # 传入替换的参数获取对应的值
                 extract_data = getattr(DebugTalk(), func_name)(*func_params.split(',') if func_params else "")
-                # 将解析前的数值str_data替换解析后的数值extract_data
-                # token: ${get_extract_data(product_id,1)} ---> "token": "123456"
-                str_data = str_data.replace(ref_all_params, str(extract_data))
+                # 替换取值。分两种情况：
+                # 1) 整个值就是一个占位符（在 json.dumps 后的字符串里形如 "${...}"）：
+                #    替换成原生 JSON 值，保住类型 —— 整数还是整数、字典还是字典、null 还是 null。
+                #    这样断言里写 eq: {'id': '${get_extract_data(asn_id)}'} 时，
+                #    实际响应的 22（数字）才能和替换出来的 22（数字）相等，
+                #    否则会变成字符串 '22' 和数字 22 比较，永远不相等。
+                # 2) 占位符只是值的一部分（如 "api_auto_${get_run_id()}"）：按字符串拼接替换。
+                if f'"{ref_all_params}"' in str_data:
+                    str_data = str_data.replace(f'"{ref_all_params}"',
+                                                json.dumps(extract_data, ensure_ascii=False))
+                else:
+                    str_data = str_data.replace(ref_all_params, str(extract_data))
 
         # 还原数据：dict / list 都要还原成原类型。
         # 否则 validation（list）会被转成字符串，断言里遍历字符串会报
@@ -104,10 +113,12 @@ class BaseRequest(object):
             if base_info.get('cookies') is not None:
                 cookie=eval(self.replace_load(base_info['cookies']))
 
-            # 处理断言
-            validation=self.replace_load(test_case.get('validation'))
-            test_case['validation'] = validation
-            test_case.pop('validation')
+            # 处理断言：这里只把 validation 从请求参数里摘出来，**先不解析**里的 ${}。
+            # 解析挪到响应回来、extract 落盘之后（见下面的 assert_result 之前），
+            # 这样断言既能用前面用例提取的变量，也能用「本用例自己刚提取的变量」——
+            # 例如拿接口返回的 count / id 去和数据库比对（接口与库一致性校验）。
+            # 如果在这里就解析，本用例自己 extract 的变量还不存在，会直接 KeyError。
+            validation=test_case.pop('validation', None)
             #处理参数提取
             extract=test_case.pop('extract',None)
             extract_list=test_case.pop('extract_list',None)
@@ -137,7 +148,9 @@ class BaseRequest(object):
                 self.extract_data(extract, res_text)
             if extract_list is not None:
                 self.extract_data_list(extract_list, res_text)
-            #处理接口断言
+            #处理接口断言：到这里才解析 validation 里的 ${}，
+            # 此时本用例 extract 出来的变量已经写进 extract.yaml，断言里可以直接引用
+            validation = self.replace_load(validation)
             assert_res.assert_result(validation, res_json,res.status_code)
         except Exception as e:
             logs.error(e)
@@ -176,8 +189,11 @@ class BaseRequest(object):
         :return:
         """
         pattenr_list = ['(.+?)', '(.*?)', r'(\d+)', r'(\d*)']
-        try:
-            for key, value in testcase_extract.items():
+        # 每个提取项单独 try：原来整个循环套在一个 try 里，第一个表达式提取失败（例如
+        # jsonpath 取不到值 -> 对 False 取 [0] 抛 TypeError）就会中断循环，
+        # 后面所有变量都不会写入 extract.yaml，最终表现成一串莫名其妙的 KeyError。
+        for key, value in testcase_extract.items():
+            try:
                 # 处理正则表达式的提取
                 for pat in pattenr_list:
                     if pat in value:
@@ -191,16 +207,20 @@ class BaseRequest(object):
                         allure.attach(str(extract_data), f'正则提取的参数:{key}', allure.attachment_type.TEXT)
                         self.read.write_yaml_data(extract_data)
                 if "$" in value:
-                    ext_json = jsonpath.jsonpath(json.loads(response), value)[0]
-                    if ext_json:
+                    # jsonpath 匹配不到时返回 False，不能直接取 [0]，先判空再给明确提示
+                    ext_result = jsonpath.jsonpath(json.loads(response), value)
+                    ext_json = ext_result[0] if isinstance(ext_result, list) and ext_result else None
+                    if ext_json is not None:
                         extract_data = {key: ext_json}
                     else:
                         extract_data = {key: '未提取到数据，该接口返回值为空或者json提取表达式有误！'}
+                        logs.error(f'提取 {key} 失败：表达式 {value} 在响应里取不到值，'
+                                   f'请检查接口是否返回了该字段（响应：{response[:200]}）')
                     logs.info(f'json提取到的参数:{extract_data}')
                     allure.attach(str(extract_data), f'json提取的参数:{key}', allure.attachment_type.TEXT)
                     self.read.write_yaml_data(extract_data)
-        except Exception as e:
-            logs.error('接口返回值提取异常，请检查yaml文件的extract表达式是否正确！')
+            except Exception as e:
+                logs.error(f'提取 {key} 异常（表达式 {value}）：{e}')
 
     def extract_data_list(self, testcase_extract_list, response):
         """

@@ -4,7 +4,7 @@ import time
 import requests
 from common.recordlog import logs
 from common.readyaml import ReadYamlData
-from common.clean_data import clean_asn_by_api
+from common.clean_data import clean_asn_by_api, reset_bin_empty_label
 from common.feishu import send_fs_msg
 from common.operJenkins import OperJenkins
 from conf.operationConfig import OperationConfig
@@ -110,6 +110,12 @@ def clean_history_data(login_first):
 
     prefix = config.get_clean_conf('creater_prefix') or 'api_auto'
     try:
+        # 先还原库位标记：链路的「查询库位」用例要求筛出 Normal 空库位，
+        # 而上架成功后该库位会被置为非空，不还原的话跑几次就没有空库位可用了
+        if str(config.get_clean_conf('reset_bin_label')) == '1':
+            bin_summary = reset_bin_empty_label()
+            logs.info(f'库位标记还原完成：Normal 库位 {bin_summary["total"]} 个，本次还原 {bin_summary["reset"]} 个')
+
         summary = clean_asn_by_api(creater_prefix=prefix)
         logs.info(f'测试数据清理完成：前缀“{prefix}”匹配到 {summary["found"]} 条，'
                   f'已删除 {summary["deleted"]} 条，跳过 {summary["skipped"]} 条')

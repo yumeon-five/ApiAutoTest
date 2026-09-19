@@ -1,4 +1,4 @@
-# ASN 完成分拣（状态 3 -> 4）
+﻿# ASN 完成分拣（状态 3 -> 4）
 #
 # 【业务位置】链路第 5 步：预分拣(2->3) -> 【完成分拣(3->4)】 -> 上架(4->5)
 # 【前置依赖】test_asn_presort.py 已把状态推到 3（CHAIN_ORDER = 50）
@@ -30,11 +30,11 @@
       db_before:
         stock_snapshot:
           sql: "select pre_sort_stock, sorted_stock, asn_stock, goods_qty from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       json:
         asn_code: ${get_extract_data(asn_code)}
-        supplier: Supplier Name-1
-        goodsData: [{"goods_code": "A00001", "goods_actual_qty": 5}]
+        supplier: ${get_extract_data(supplier_name)}
+        goodsData: [{"goods_code": "${get_extract_data(goods_code)}", "goods_actual_qty": 5}]
       validation:
         - contains: {'status_code': 200}
         - eq: {'detail': 'success'}
@@ -50,7 +50,7 @@
         # 库存流转：预分拣量清空（-5），已分拣量 +5，在途量与总数不动
         - db:
             sql: "select pre_sort_stock, sorted_stock, asn_stock, goods_qty from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {pre_sort_stock: -5, sorted_stock: 5, asn_stock: 0, goods_qty: 0}
 
@@ -63,11 +63,11 @@
           params: ["${get_extract_data(asn_code)}"]
         stock_snapshot:
           sql: "select sorted_stock, pre_sort_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       json:
         asn_code: ${get_extract_data(asn_code)}
-        supplier: Supplier Name-1
-        goodsData: [{"goods_code": "A00001", "goods_actual_qty": 5}]
+        supplier: ${get_extract_data(supplier_name)}
+        goodsData: [{"goods_code": "${get_extract_data(goods_code)}", "goods_actual_qty": 5}]
       validation:
         # 状态已经是 4，再次提交应该被拦截
         - contains: {'status_code': 200}
@@ -85,6 +85,6 @@
             expect: {goods_actual_qty: 0}
         - db:
             sql: "select sorted_stock, pre_sort_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {sorted_stock: 0, pre_sort_stock: 0}

@@ -1,4 +1,4 @@
-# ASN 预分拣（状态 2 -> 3）
+﻿# ASN 预分拣（状态 2 -> 3）
 #
 # 【业务位置】链路第 4 步：预装车(1->2) -> 【预分拣(2->3)】 -> 完成分拣(3->4) -> 上架(4->5)
 # 【前置依赖】test_asn_preload.py 已把状态推到 2（CHAIN_ORDER = 40 保证跑在它后面）
@@ -24,7 +24,7 @@
       db_before:
         stock_snapshot:
           sql: "select pre_load_stock, pre_sort_stock, asn_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       validation:
         - contains: {'status_code': 200}
         - eq: {'asn_status': 3}
@@ -40,7 +40,7 @@
         # 库存流转：预装车量 -5，预分拣量 +5，ASN 在途量保持不变
         - db:
             sql: "select pre_load_stock, pre_sort_stock, asn_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {pre_load_stock: -5, pre_sort_stock: 5, asn_stock: 0}
 
@@ -50,7 +50,7 @@
       db_before:
         stock_snapshot:
           sql: "select pre_load_stock, pre_sort_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-          params: ["${get_extract_data(token)}", "A00001"]
+          params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
       validation:
         - contains: {'status_code': 200}
         - eq: {'status_code': 500}
@@ -61,6 +61,6 @@
             expect: {asn_status: 3}
         - db:
             sql: "select pre_load_stock, pre_sort_stock from stocklist where openid = ? and goods_code = ? order by id limit 1"
-            params: ["${get_extract_data(token)}", "A00001"]
+            params: ["${get_extract_data(token)}", "${get_extract_data(goods_code)}"]
             delta_from: stock_snapshot
             expect: {pre_load_stock: 0, pre_sort_stock: 0}

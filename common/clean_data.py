@@ -70,6 +70,63 @@ def _load_host_and_token():
     return host, token
 
 
+def reset_bin_empty_label():
+    """
+    把本账号 Normal 类型的库位重新标记为「空库位」（empty_label=True）。
+
+    为什么需要：链路的「查询库位」用例要求筛出 Normal 空库位，而上架成功后源码会把该库位的
+    empty_label 置为 False。本环境只有 3 个 Normal 库位，不还原的话跑 3 次就没有空库位可用了，
+    链路会因为「查不到空库位」直接失败。
+
+    说明两点：
+    1) 只改 empty_label 这个标记位（接口 PATCH /binset/{pk}/），不动库位里的实际库存数量；
+       它影响的是「推荐空库位」的建议，真实数量在 stockbin 表里。
+    2) 如果这个环境里的 Normal 库位有别人手工放的货，还原标记可能不符合预期，
+       可以把 conf.ini 的 [CLEAN] reset_bin_label 关掉（0）。
+
+    :return: {'total': Normal 库位总数, 'reset': 本次还原了几个}
+    """
+    host, token = _load_host_and_token()
+    headers = {'token': token, 'Accept': 'application/json', 'Content-Type': 'application/json'}
+    binset_url = f'{host}/binset/'
+
+    res = requests.get(binset_url,
+                       params={'bin_property': 'Normal', 'page': 1, 'max_page': 1000, 'format': 'json'},
+                       headers=headers, timeout=10)
+    body = res.json()
+    if _is_business_error(body):
+        raise RuntimeError(f'查询库位失败：{body}')
+
+    bins = body.get('results') or []
+    summary = {'total': len(bins), 'reset': 0}
+    for item in bins:
+        # 已经是空库位的不用再改，少发几次请求
+        if item.get('empty_label') is True:
+            continue
+        # 注意：这里必须用 PUT 全量提交，不能用 PATCH 部分提交 ——
+        # 实测 PUT/PATCH /binset/{pk}/ 的实现里直接取 data['bin_size'] 等字段，
+        # 缺字段会抛 KeyError 变成 HTTP 500（Django 错误页）；漏了 creater 之类必填字段则报 400。
+        # 所以把接口查回来的字段原样回传，只把 empty_label 改成 True
+        payload = {k: v for k, v in item.items()
+                   if k not in ('id', 'create_time', 'update_time')}
+        payload['empty_label'] = True
+        put_res = requests.put(f'{binset_url}{item.get("id")}/',
+                               json=payload, headers=headers, timeout=10)
+        try:
+            put_body = put_res.json()
+        except ValueError:
+            # 返回的不是 JSON（例如 500 的 Django 错误页），必须当成失败，
+            # 否则会把「没改成功」误判为成功（这个坑踩过一次，写在这里备查）
+            logs.warning(f'还原库位 {item.get("bin_name")} 失败：HTTP {put_res.status_code}，'
+                         f'响应不是 JSON：{put_res.text[:150]}')
+            continue
+        if _is_business_error(put_body):
+            logs.warning(f'还原库位 {item.get("bin_name")} 失败：{put_body}')
+        else:
+            summary['reset'] += 1
+    return summary
+
+
 def clean_asn_by_api(creater_prefix=DEFAULT_CREATER_PREFIX):
     """
     按 creater 前缀，通过接口软删除自动化创建的入库单主单。

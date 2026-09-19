@@ -359,14 +359,18 @@ class Assertions:
                 mismatch = {}
                 for field, expect_value in expect_fields.items():
                     actual_value = actual_row.get(field)
-                    if delta_from and isinstance(baseline, dict) and field in baseline \
-                            and isinstance(actual_value, (int, float)) \
-                            and isinstance(baseline[field], (int, float)):
-                        # 增量比对：实际值 - 基线值 == 预期增量
-                        change = round(actual_value - baseline[field], 6)
+                    if delta_from and isinstance(actual_value, (int, float)) \
+                            and (baseline is None or (isinstance(baseline, dict) and field in baseline)):
+                        # 增量比对：实际值 - 基线值 == 预期增量。
+                        # 基线为 None 表示「执行前根本没有这条数据」，此时基线按 0 处理
+                        # （用例文档里明确要求：count=0 时基线按 0 处理）
+                        base_value = 0 if baseline is None else baseline[field]
+                        if not isinstance(base_value, (int, float)):
+                            base_value = 0
+                        change = round(actual_value - base_value, 6)
                         if change != expect_value:
                             mismatch[field] = {'预期增量': expect_value, '实际增量': change,
-                                               '基线': baseline[field], '实际': actual_value}
+                                               '基线': base_value, '实际': actual_value}
                     elif actual_value != expect_value:
                         mismatch[field] = {'预期': expect_value, '实际': actual_value}
                 if mismatch:

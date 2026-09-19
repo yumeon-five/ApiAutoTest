@@ -1,4 +1,4 @@
-# 入库单（ASN）列表查询用例
+﻿# 入库单（ASN）列表查询用例
 #
 # 【文件结构】同一个接口的两组请求头（带 token / 不带 token）写在两个顶层 baseInfo 块里，
 #   get_testcase_yaml() 会按块展开成 [baseInfo, testCase] 列表，测试模块里按下标参数化即可

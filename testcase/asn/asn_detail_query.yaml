@@ -1,4 +1,4 @@
-# 按 ASN 编号查询商品明细
+﻿# 按 ASN 编号查询商品明细
 #
 # 【业务位置】链路第 6 步：完成分拣(3->4) -> 【查明细取 detail_id】 -> 上架(4->5)
 #   上架接口的路径参数是「明细主键」（/asn/movetobin/{detail_id}/），
@@ -29,7 +29,7 @@
         - contains: {'status_code': 200}
         - gt: {'$.count': 0}
         # 明细字段：商品编码、计划数量、实到数量都应该和前面链路一致
-        - contains: {'goods_code': 'A00001'}
+        - contains: {'goods_code': '${get_extract_data(goods_code)}'}
         - contains: {'goods_qty': 5}
         - contains: {'goods_actual_qty': 5}
         - contains: {'asn_status': 4}

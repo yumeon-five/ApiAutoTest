@@ -1,3 +1,4 @@
+import os
 import pytest
 import time
 import requests
@@ -6,6 +7,7 @@ from common.readyaml import ReadYamlData
 from common.feishu import send_fs_msg
 from common.operJenkins import OperJenkins
 from conf.operationConfig import OperationConfig
+from conf.setting import FILE_PATH
 
 read=ReadYamlData()
 
@@ -47,6 +49,13 @@ def login_first(clear_extract_data):
        以 KeyError: 'token' 这种毫不相干的报错挂掉。现在改为 pytest.fail 快速失败，
        让问题在会话最开头就暴露出来。
     """
+    # 前置检查：conf/conf.ini 是本地环境配置，不入库，新环境 clone 后要先从模板复制一份。
+    # 缺文件时 configparser 不会抛异常（read 会静默忽略不存在的文件），只会让 host 读成 None，
+    # 最后表现成 "Invalid URL 'None/login/'" 这种看不出根因的报错，所以在这里提前拦一下。
+    if not os.path.exists(FILE_PATH['conf']):
+        pytest.fail(f'配置文件不存在：{FILE_PATH["conf"]}\n'
+                    f'请复制 conf/conf.ini.example 为 conf/conf.ini，并按实际环境填写。')
+
     config = OperationConfig()
     host = config.get_envi('host')
     # 账号密码统一放在 conf/conf.ini 的 [LOGIN] 段，代码里不再硬编码

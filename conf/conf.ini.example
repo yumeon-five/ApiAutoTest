@@ -1,0 +1,54 @@
+# ============================================================
+# 配置模板：复制成 conf.ini 后再填写实际环境信息
+#   Windows:  copy conf\conf.ini.example conf\conf.ini
+#   Linux  :  cp conf/conf.ini.example conf/conf.ini
+#
+# conf.ini 属于「本地环境配置」，.gitignore 里已声明不入库（里面会放数据库口令、
+# Jenkins 账号等凭据），所以每个新环境 clone 之后都要自己复制一份。
+# 本模板只保留占位符，禁止把真实口令写进来。
+# ============================================================
+
+# 被测系统地址（WMS 后端）。
+# 本地用 daphne 起后端的默认端口是 8008：
+#   cd GreaterWMS && python -m daphne -b 127.0.0.1 -p 8008 greaterwms.asgi:application
+[api_envi]
+host = http://127.0.0.1:8008
+
+# 业务前置登录账号（conftest.py 的 login_first 夹具使用）。
+# 必须与 testcase/login/login.yaml 中「登录成功」用例的账号保持一致，
+# 否则前置登录会失败，接口关联用的 token / operator 就写不进 extract.yaml。
+# 注意：账号必须在 WMS 库里真实存在（django 的 auth_user 表），
+# 用不存在的账号登录会让失败用例走「用户名不存在」分支，测不到密码校验。
+[LOGIN]
+username = change_me
+password = change_me
+
+# 数据库断言（assertions.py 的 db 断言）用。
+# 注意：GreaterWMS 默认用 SQLite（GreaterWMS/db.sqlite3），
+# 下面这组是模板项目遗留的 MySQL 配置，WMS 上要用 db 断言需要先改成实际的库。
+[MYSQL]
+host = 127.0.0.1
+port = 3306
+username = change_me
+password = change_me
+database = change_me
+
+# Redis（common/connection.py 的 RedisClient 用），不需要可以留空
+[REDIS]
+host = 127.0.0.1
+port = 6379
+username =
+password =
+db = 0
+# 集群模式才需要，格式 host1:port1,host2:port2,...；留空则走单机模式
+startup_nodes =
+
+# Jenkins 通知用（conftest.py 收尾时用 common/operJenkins.py 取构建报告链接，
+# 再通过 common/feishu.py 推送）。没接 Jenkins 时这里填不通也不会影响用例执行，
+# 只是收尾时会等 timeout 秒后跳过通知。
+[JENKINS]
+url = http://127.0.0.1:8080/
+username = change_me
+password = change_me
+timeout = 30
+job_name = change_me

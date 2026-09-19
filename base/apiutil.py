@@ -80,7 +80,10 @@ class BaseRequest(object):
         params_type = ['params', 'data', 'json']
         try:
             base_url = self.conf.get_envi('host')
-            url = base_url + base_info['url']
+            # URL 也走一遍 ${} 解析：链路用例的路径参数需要接口关联，
+            # 例如 asn 各状态流转接口的地址是 /asn/preload/${get_extract_data(asn_id)}/，
+            # 原来只对 header / 参数做替换，URL 里写 ${} 不会被解析
+            url = self.replace_load(base_url + base_info['url'])
             allure.attach(url, f'接口地址:{url}')  # 测试报告中的测试步骤
             api_name = base_info['api_name']
             allure.attach(api_name, f'接口名称:{api_name}')

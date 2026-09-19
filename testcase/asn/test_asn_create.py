@@ -5,6 +5,10 @@ from common.readyaml import get_testcase_yaml
 
 from base.apiutil import BaseRequest
 
+# 链路顺序：创建(10) -> 明细(20) -> 预装车(30) -> 预分拣(40) -> 完成分拣(50) -> 查明细(55) -> 上架(60)
+# 由 conftest.py 的 pytest_collection_modifyitems 读取（文件名排序不等于业务顺序）
+CHAIN_ORDER = 10
+
 # 模块级加载用例数据，按 yaml 中的顺序索引参数化。
 # 这个 yaml 有两个 baseInfo 块（先 POST 创建、再 GET 按 asn_code 回查），
 # 展开后是 4 条用例，顺序与 yaml 一致 —— 接口关联（创建 -> 提取 asn_code -> 回查）依赖这个顺序

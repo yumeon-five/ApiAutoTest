@@ -5,6 +5,10 @@ from common.readyaml import get_testcase_yaml
 
 from base.apiutil import BaseRequest
 
+# 链路顺序：登录(0) -> 创建(10) -> 明细(20) -> 预装车(30) -> 预分拣(40) -> 完成分拣(50) -> 查明细(55) -> 上架(60)
+# 由 conftest.py 的 pytest_collection_modifyitems 读取
+CHAIN_ORDER = 0
+
 # 模块级加载用例数据，按 yaml 中的顺序索引参数化
 LOGIN_CASES = get_testcase_yaml('./testcase/login/login.yaml')
 

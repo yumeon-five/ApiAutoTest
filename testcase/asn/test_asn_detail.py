@@ -5,6 +5,9 @@ from common.readyaml import get_testcase_yaml
 
 from base.apiutil import BaseRequest
 
+# 链路顺序：创建(10) -> 明细(20) -> 预装车(30) -> 预分拣(40) -> 完成分拣(50) -> 查明细(55) -> 上架(60)
+CHAIN_ORDER = 20
+
 # 模块级加载用例数据，按 yaml 中的顺序索引参数化
 # 依赖 testcase/asn/test_asn_create.py 先执行（它把 asn_code 提取到 extract.yaml）
 ASN_DETAIL_CASES = get_testcase_yaml('./testcase/asn/asn_detail.yaml')

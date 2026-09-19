@@ -119,6 +119,25 @@ def clean_history_data(login_first):
         logs.warning(f'测试数据清理失败，跳过（不影响用例执行）：{e}')
 
 
+def pytest_collection_modifyitems(config, items):
+    """
+    按测试模块声明的 CHAIN_ORDER 排序，保证「链路用例」按业务顺序执行。
+
+    为什么需要：pytest 默认按文件名排序执行，但文件名排序不等于业务顺序。
+    ASN 入库链路是 创建(1) -> 明细 -> 预装车(2) -> 预分拣(3) -> 完成分拣(4) -> 上架(5)，
+    光按文件名排出来的是 create / detail / list / movetobin / preload / presort / sorted —— 顺序是乱的，
+    而每一步都依赖上一步改完的状态，跑错顺序就会一路报 "This ASN Status Is Not X"。
+
+    用法：在测试模块顶部声明链路序号，例如 test_asn_preload.py 里写 CHAIN_ORDER = 30。
+    没声明的模块取默认值 1000（排在最后）；sort 是稳定排序，同序号的模块保持原有相对顺序。
+    """
+    def chain_order(item):
+        module = getattr(item, 'module', None)
+        return getattr(module, 'CHAIN_ORDER', 1000)
+
+    items.sort(key=chain_order)
+
+
 @pytest.fixture(scope='session',autouse=True)
 def fixture_test():
     """前后置处理"""
